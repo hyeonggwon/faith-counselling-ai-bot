@@ -1,0 +1,5 @@
+# Environment variable
+.env
+
+# etc
+.idea/
