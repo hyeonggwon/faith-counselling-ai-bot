@@ -79,7 +79,7 @@ class RAGSystem:
             input_variables=["question", "document"],
         )
 
-        llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash-latest", google_api_key=google_api_key)
+        llm = ChatGoogleGenerativeAI(model="models/gemma-3-27b-it", google_api_key=google_api_key)
         self.chain = prompt | llm
 
     def ask(self, question):
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     print("당신의 신앙을 도와주는 AI입니다. 무엇이 궁금하신가요?")
 
     while True:
-        question = input("질문(q or quit to exit) :")
+        question = input("\n질문(q or quit to exit) :")
         if question in ['q', 'quit']:
             break
         response = rag_system.ask(question)
