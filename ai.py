@@ -19,28 +19,13 @@ class RAGSystem:
         self._setup_chain()
 
     def _setup_retriever(self):
-        path = "교리/"
-
-        text_loader_kwargs = {"autodetect_encoding": True}
-
-        loader = DirectoryLoader(
-            path,
-            glob="**/*.txt",
-            loader_cls=TextLoader,
-            silent_errors=True,
-            loader_kwargs=text_loader_kwargs
-        )
-
-        docs = loader.load()
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=50,
-        )
-
-        split_docs = text_splitter.split_documents(docs)
-
-        device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
-
+        # 임베딩 모델 우선 정의 (로드/생성 시 모두 필요)
+        if torch.cuda.is_available():
+            device = torch.device('cuda')
+        elif torch.backends.mps.is_available():
+            device = torch.device("mps")
+        else:
+            device = torch.device("cpu")
         model_name = "BAAI/bge-m3"
         model_kwargs = {"device": device}
         encode_kwargs = {"normalize_embeddings": True}
@@ -51,8 +36,49 @@ class RAGSystem:
             encode_kwargs=encode_kwargs
         )
 
-        db = FAISS.from_documents(split_docs, hf_embeddings)
+        # 저장할 Vector DB 경로 설정
+        DB_SAVE_PATH = "faiss_index_bge_m3"  # 사용한 임베딩 모델명 등을 넣어주면 좋습니다.
 
+        if os.path.exists(DB_SAVE_PATH):
+            # [빠른 로드] 저장된 DB가 있으면 불러오기
+            print(f"'{DB_SAVE_PATH}'에서 기존 Vector DB를 로드합니다.")
+            db = FAISS.load_local(
+                DB_SAVE_PATH,
+                hf_embeddings,
+                # 최신 langchain에서 huggingface 임베딩을 로드할 때 필요할 수 있습니다.
+                allow_dangerous_deserialization=True
+            )
+
+        else:
+            # [최초 1회 실행] 저장된 DB가 없으면 새로 생성
+            print(f"'{DB_SAVE_PATH}'를 찾을 수 없습니다. 새로운 Vector DB를 생성합니다.")
+
+            path = "교리/"
+            text_loader_kwargs = {"autodetect_encoding": True}
+            loader = DirectoryLoader(
+                path,
+                glob="**/*.txt",
+                loader_cls=TextLoader,
+                silent_errors=True,
+                loader_kwargs=text_loader_kwargs
+            )
+            print("문서 로드 중...")
+            docs = loader.load()
+
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                chunk_overlap=50,
+            )
+            print("문서 분할 중...")
+            split_docs = text_splitter.split_documents(docs)
+
+            print("Vector DB 생성 및 임베딩 중... (시간이 오래 걸릴 수 있습니다)")
+            db = FAISS.from_documents(split_docs, hf_embeddings)
+
+            print(f"Vector DB를 '{DB_SAVE_PATH}'에 저장합니다.")
+            db.save_local(DB_SAVE_PATH)  # <- 핵심: DB를 파일로 저장
+
+        # 리트리버 설정
         base_retriever = db.as_retriever(search_kwargs={"k": 10})
 
         model = HuggingFaceCrossEncoder(model_name="BAAI/bge-reranker-v2-m3")
@@ -69,9 +95,10 @@ class RAGSystem:
             raise ValueError("GOOGLE_AI_API_KEY 환경 변수가 설정되지 않았습니다. .env 파일을 확인해주세요.")
 
         template = """
-                당신은 웨스트민스터 신앙고백과 대소요리문답에 해박한 장로교 교리 전문가입니다. 주어진 문서를 바탕으로 다음 질문에 대해 신학적으로 답변해주세요.\n\n
-                [질문] : {question}\n\n
-                [문서] : {document}\n\n
+                당신은 웨스트민스터 신앙고백과 대소요리문답에 해박한 장로교 교리 전문가입니다. 주어진 문서를 바탕으로 다음 질문에 대해 신학적으로 답변해주세요.
+                이해하기 쉽도록 설명해주고, 당신이 참고한 문서는 말 끝에 글로 나열해서 표시해주세요\n\n
+                #[질문] : {question}\n\n
+                #[문서] : {document}\n\n
                 """
 
         prompt = PromptTemplate(
