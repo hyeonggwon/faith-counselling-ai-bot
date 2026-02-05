@@ -3,5 +3,8 @@ langchain
 langchain-google-genai
 langchain-community
 langchain-huggingface
+langchain-openai
 faiss-cpu
 sentence-transformers
+openai
+yt-dlp

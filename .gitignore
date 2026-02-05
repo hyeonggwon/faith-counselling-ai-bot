@@ -3,3 +3,10 @@
 
 # etc
 .idea/
+
+# Claude
+.claude
+CLAUDE.md
+
+# sermons data
+sermons
